@@ -7,6 +7,7 @@ wireless versus mode**. Clearing lines sends garbage rows to the other player.
 
 - 7-bag randomizer, hold, 3-piece next queue, ghost piece, wall kicks, lock delay
 - Solo marathon mode (speeds up every 10 lines)
+- Zen mode: like solo, but the speed never increases (press **B** on the menu)
 - Local wireless versus between two 3DS consoles (no internet needed)
   - 2 / 3 / 4 lines cleared send 1 / 2 / 4 garbage lines
   - Clearing lines first cancels garbage that is incoming to you (red meter)

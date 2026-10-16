@@ -203,6 +203,14 @@ static u32 seed(void)
 	return (u32)osGetTime() ^ (u32)svcGetSystemTick();
 }
 
+static bool zenMode;
+
+static void start_solo(void)
+{
+	game_init(&game, seed());
+	game.zen = zenMode;
+}
+
 static void start_round(void)
 {
 	game_init(&game, seed());
@@ -322,6 +330,7 @@ static void draw_bottom(int frame)
 	case MODE_MENU:
 		print_line(2,  "          TETRIS 3DS");
 		print_line(5,  "  A  - Solo marathon");
+		print_line(6,  "  B  - Zen (speed never increases)");
 		print_line(7,  "  X  - Host versus (local wireless)");
 		print_line(9,  "  Y  - Join versus (local wireless)");
 		print_line(11, "  START - Exit");
@@ -350,10 +359,13 @@ static void draw_bottom(int frame)
 		break;
 
 	case MODE_SOLO:
-		print_line(2,  "  SOLO");
+		print_line(2,  zenMode ? "  ZEN" : "  SOLO");
 		print_line(4,  "  Score : %lu", (unsigned long)game.score);
 		print_line(5,  "  Lines : %d", game.lines);
-		print_line(6,  "  Level : %d", game.level + 1);
+		if (zenMode)
+			print_line(6, "  Speed : fixed");
+		else
+			print_line(6, "  Level : %d", game.level + 1);
 		if (game.over) {
 			print_line(9,  "  GAME OVER");
 			print_line(11, "  A - Play again   START - Menu");
@@ -410,10 +422,11 @@ int main(void)
 		case MODE_MENU:
 			if (down & KEY_START)
 				goto quit;
-			if (down & KEY_A) {
+			if (down & (KEY_A | KEY_B)) {
 				mode = MODE_SOLO;
 				paused = false;
-				game_init(&game, seed());
+				zenMode = (down & KEY_B) != 0;
+				start_solo();
 				consoleClear();
 			} else if (down & (KEY_X | KEY_Y)) {
 				if (!netOk && !(netOk = net_init())) {
@@ -456,7 +469,7 @@ int main(void)
 		case MODE_SOLO:
 			if (game.over) {
 				if (down & KEY_A)
-					game_init(&game, seed());
+					start_solo();
 				else if (down & KEY_START)
 					back_to_menu("");
 			} else if (paused) {

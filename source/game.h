@@ -50,6 +50,7 @@ typedef struct {
 	int lines;
 	int level;
 	bool over;
+	bool zen;              /* gravity never speeds up */
 
 	int pendingGarbage;    /* lines queued to be pushed up from below */
 	int garbageOut;        /* lines sent to the opponent (cumulative this round) */

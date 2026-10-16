@@ -241,7 +241,7 @@ int game_ghost_y(const Game *g)
 
 static int gravity_frames(const Game *g)
 {
-	int f = 48 - g->level * 4;
+	int f = 48 - (g->zen ? 0 : g->level) * 4;
 	return f < 2 ? 2 : f;
 }
 
