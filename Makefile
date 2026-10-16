@@ -23,6 +23,10 @@ APP_TITLE	:=	Tetris 3DS
 APP_DESCRIPTION	:=	Tetris with local wireless versus
 APP_AUTHOR	:=	tetris3ds
 
+# Tools for `make cia` (build them from 3DSGuy/Project_CTR and diasurgical/bannertool)
+MAKEROM		?=	makerom
+BANNERTOOL	?=	bannertool
+
 #---------------------------------------------------------------------------------
 # options for code generation
 #---------------------------------------------------------------------------------
@@ -74,8 +78,9 @@ export INCLUDE	:=	$(foreach dir,$(INCLUDES),-I$(CURDIR)/$(dir)) \
 export LIBPATHS	:=	$(foreach dir,$(LIBDIRS),-L$(dir)/lib)
 
 export _3DSXFLAGS += --smdh=$(CURDIR)/$(TARGET).smdh
+export APP_ICON := $(TOPDIR)/meta/icon.png
 
-.PHONY: all clean
+.PHONY: all clean cia
 
 all: $(BUILD)
 	@$(MAKE) --no-print-directory -C $(BUILD) -f $(CURDIR)/Makefile
@@ -83,9 +88,17 @@ all: $(BUILD)
 $(BUILD):
 	@mkdir -p $@
 
+cia: all
+	@$(BANNERTOOL) makebanner -i meta/banner.png -a meta/banner.wav -o $(BUILD)/banner.bnr
+	@$(BANNERTOOL) makesmdh -s "$(APP_TITLE)" -l "$(APP_DESCRIPTION)" -p "$(APP_AUTHOR)" \
+		-i meta/icon.png -o $(BUILD)/icon.icn
+	@$(MAKEROM) -f cia -o $(TARGET).cia -target t -exefslogo -elf $(TARGET).elf \
+		-rsf meta/cia.rsf -banner $(BUILD)/banner.bnr -icon $(BUILD)/icon.icn
+	@echo built ... $(TARGET).cia
+
 clean:
 	@echo clean ...
-	@rm -fr $(BUILD) $(TARGET).3dsx $(TARGET).smdh $(TARGET).elf
+	@rm -fr $(BUILD) $(TARGET).3dsx $(TARGET).smdh $(TARGET).elf $(TARGET).cia
 
 #---------------------------------------------------------------------------------
 else

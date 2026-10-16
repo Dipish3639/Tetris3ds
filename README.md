@@ -53,8 +53,21 @@ make
 This produces `tetris3ds.3dsx`. Copy it to `/3ds/` on the SD card and launch it
 from the Homebrew Launcher on each console.
 
-Every push is also built by GitHub Actions; the `.3dsx` can be downloaded from
-the workflow run's artifacts.
+### Installable .cia (HOME Menu icon)
+
+```sh
+make cia MAKEROM=/path/to/makerom BANNERTOOL=/path/to/bannertool
+```
+
+This produces `tetris3ds.cia` with its own icon, banner and jingle (from
+`meta/`). Install it with FBI (or another CIA installer) on a console running
+custom firmware, and Tetris 3DS appears on the HOME Menu. `makerom` comes from
+[3DSGuy/Project_CTR](https://github.com/3DSGuy/Project_CTR) and `bannertool`
+from [diasurgical/bannertool](https://github.com/diasurgical/bannertool).
+`tools/genassets.py` regenerates the icon, banner and jingle.
+
+Every push is also built by GitHub Actions; both the `.3dsx` and the `.cia`
+can be downloaded from the workflow run's artifacts.
 
 ## Previewing on a PC
 

@@ -5,15 +5,43 @@ on:
   pull_request:
   workflow_dispatch:
 
+env:
+  PROJECT_CTR_REF: d52c2b0e788c2d085763d7c5dcc4b2edd9ffb7d8
+  BANNERTOOL_REF: 16d8c5a0ce02a5e06e64ab42275132fca57c04a2
+
 jobs:
   build:
     runs-on: ubuntu-latest
     container: devkitpro/devkitarm:latest
     steps:
       - uses: actions/checkout@v4
-      - name: Build
+
+      - name: Build .3dsx
         run: make
+
+      - name: Install host build tools
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends build-essential git zip ca-certificates
+
+      - name: Build makerom and bannertool
+        run: |
+          mkdir -p /opt/ctrtools
+          git clone https://github.com/3DSGuy/Project_CTR /tmp/Project_CTR
+          git -C /tmp/Project_CTR checkout "$PROJECT_CTR_REF"
+          make -C /tmp/Project_CTR/makerom -j"$(nproc)"
+          cp /tmp/Project_CTR/makerom/bin/makerom /opt/ctrtools/
+          git clone https://github.com/diasurgical/bannertool /tmp/bannertool
+          git -C /tmp/bannertool checkout "$BANNERTOOL_REF"
+          make -C /tmp/bannertool -j"$(nproc)"
+          cp /tmp/bannertool/output/linux-x86_64/bannertool /opt/ctrtools/
+
+      - name: Build .cia
+        run: make cia MAKEROM=/opt/ctrtools/makerom BANNERTOOL=/opt/ctrtools/bannertool
+
       - uses: actions/upload-artifact@v4
         with:
           name: tetris3ds
-          path: tetris3ds.3dsx
+          path: |
+            tetris3ds.3dsx
+            tetris3ds.cia
