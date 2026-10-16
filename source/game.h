@@ -8,7 +8,7 @@
 #define BOARD_H   22   /* top 2 rows are hidden spawn rows */
 #define VISIBLE_H 20
 #define HIDDEN_H  (BOARD_H - VISIBLE_H)
-#define NEXT_COUNT 3
+#define NEXT_COUNT 5
 
 #define CELL_EMPTY   0
 #define CELL_GARBAGE 8 /* 1..7 are piece colours (type + 1) */
@@ -54,10 +54,26 @@ typedef struct {
 
 	int pendingGarbage;    /* lines queued to be pushed up from below */
 	int garbageOut;        /* lines sent to the opponent (cumulative this round) */
-	int lastClear;         /* lines cleared by the most recent lock (for UI) */
+	int frames;            /* frames played (for the timer / PPS) */
+	int pieces;            /* pieces locked */
+	int combo;             /* -1 = no combo running */
+	int b2b;               /* -1 = no back-to-back chain */
+	bool lastRotated;      /* last successful action was a rotation (T-spin check) */
+
+	/* Result of the most recent lock, for UI effects. `clearEvent` counts up
+	 * every time a piece clears lines or T-spins so the UI can spot new ones. */
+	int clearEvent;
+	int lastClear;
+	int lastSpin;          /* SPIN_NONE / SPIN_MINI / SPIN_FULL */
+	int lastAttack;
+	bool lastAllClear;
+	uint32_t clearedRows;  /* bitmask of board rows that were cleared */
+	int lockEvent;         /* counts every lock */
 
 	uint32_t rng;
 } Game;
+
+enum { SPIN_NONE, SPIN_MINI, SPIN_FULL };
 
 void game_init(Game *g, uint32_t seed);
 void game_update(Game *g, const GameInput *in);

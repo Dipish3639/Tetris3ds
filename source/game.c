@@ -15,8 +15,12 @@ static const uint16_t SHAPES[7][4] = {
 /* Simple wall kicks tried in order on rotation. */
 static const int KICKS[][2] = { {0,0}, {-1,0}, {1,0}, {0,-1}, {-2,0}, {2,0}, {0,1} };
 
-/* Lines sent to the opponent for 0..4 lines cleared. */
-static const int ATTACK[5] = { 0, 0, 1, 2, 4 };
+/* Attack tables, roughly following TETR.IO. */
+static const int ATTACK[5]      = { 0, 0, 1, 2, 4 };
+static const int ATTACK_SPIN[4] = { 0, 2, 4, 6 };
+static const int ATTACK_MINI[4] = { 0, 0, 1, 2 };
+static const int COMBO_BONUS[]  = { 0, 0, 1, 1, 1, 2, 2, 3, 3, 4, 4, 4, 5 };
+#define ALL_CLEAR_BONUS 10
 
 #define DAS_DELAY   10
 #define DAS_REPEAT  2
@@ -83,6 +87,7 @@ static void spawn(Game *g, int type)
 	g->gravityTimer = 0;
 	g->lockTimer = 0;
 	g->lockResets = 0;
+	g->lastRotated = false;
 	if (!fits(g, g->type, g->rot, g->x, g->y))
 		g->over = true;
 }
@@ -102,6 +107,8 @@ void game_init(Game *g, uint32_t seed)
 	memset(g, 0, sizeof(*g));
 	g->rng = seed ? seed : 0x12345678u;
 	g->hold = -1;
+	g->combo = -1;
+	g->b2b = -1;
 	g->bagPos = 7;
 	for (int i = 0; i < NEXT_COUNT; i++)
 		g->queue[i] = bag_next(g);
@@ -141,9 +148,47 @@ static void push_garbage(Game *g)
 	}
 }
 
+static bool occupied(const Game *g, int x, int y)
+{
+	if (x < 0 || x >= BOARD_W || y >= BOARD_H)
+		return true;
+	return y >= 0 && g->cells[y][x] != CELL_EMPTY;
+}
+
+/* Three-corner T-spin rule. Every T rotation here has its centre at (1,1). */
+static int detect_spin(const Game *g)
+{
+	if (g->type != 5 || !g->lastRotated)
+		return SPIN_NONE;
+	static const int CORNERS[4][2] = { {0,0}, {2,0}, {2,2}, {0,2} };
+	/* Indices of the two corners on the side the T points at, per rotation. */
+	static const int FRONT[4][2] = { {0,1}, {1,2}, {2,3}, {3,0} };
+	bool filled[4];
+	int count = 0;
+	for (int i = 0; i < 4; i++) {
+		filled[i] = occupied(g, g->x + CORNERS[i][0], g->y + CORNERS[i][1]);
+		count += filled[i];
+	}
+	if (count < 3)
+		return SPIN_NONE;
+	return filled[FRONT[g->rot][0]] && filled[FRONT[g->rot][1]] ? SPIN_FULL : SPIN_MINI;
+}
+
 static int clear_lines(Game *g)
 {
 	int cleared = 0;
+	g->clearedRows = 0;
+	/* Record which rows are full before anything moves. */
+	for (int r = 0; r < BOARD_H; r++) {
+		bool full = true;
+		for (int c = 0; c < BOARD_W; c++)
+			if (g->cells[r][c] == CELL_EMPTY) {
+				full = false;
+				break;
+			}
+		if (full)
+			g->clearedRows |= 1u << r;
+	}
 	for (int r = BOARD_H - 1; r >= 0; r--) {
 		bool full = true;
 		for (int c = 0; c < BOARD_W; c++)
@@ -163,6 +208,7 @@ static int clear_lines(Game *g)
 
 static void lock_piece(Game *g)
 {
+	int spin = detect_spin(g);
 	bool aboveVisible = true;
 	for (int r = 0; r < 4; r++)
 		for (int c = 0; c < 4; c++) {
@@ -176,19 +222,57 @@ static void lock_piece(Game *g)
 		}
 
 	int cleared = clear_lines(g);
+	g->pieces++;
+	g->lockEvent++;
 	g->lastClear = cleared;
+	g->lastSpin = spin;
+	g->lastAttack = 0;
+	g->lastAllClear = false;
+	if (cleared > 0 || spin != SPIN_NONE)
+		g->clearEvent++;
+
 	if (cleared > 0) {
-		static const int PTS[5] = { 0, 100, 300, 500, 800 };
-		g->score += (uint32_t)(PTS[cleared] * (g->level + 1));
+		static const int PTS[5]      = { 0, 100, 300, 500, 800 };
+		static const int PTS_SPIN[4] = { 400, 800, 1200, 1600 };
+		static const int PTS_MINI[4] = { 100, 200, 400, 400 };
+		int lc = cleared > 3 ? 3 : cleared;
+		int pts = spin == SPIN_FULL ? PTS_SPIN[lc] : spin == SPIN_MINI ? PTS_MINI[lc] : PTS[cleared];
+
+		bool b2bable = cleared == 4 || spin != SPIN_NONE;
+		g->b2b = b2bable ? g->b2b + 1 : -1;
+		g->combo++;
+		if (g->b2b > 0)
+			pts = pts * 3 / 2;
+		g->score += (uint32_t)((pts + 50 * g->combo) * (g->level + 1));
 		g->lines += cleared;
 		g->level = g->lines / 10;
 
+		int attack = spin == SPIN_FULL ? ATTACK_SPIN[lc] : spin == SPIN_MINI ? ATTACK_MINI[lc] : ATTACK[cleared];
+		if (g->b2b > 0)
+			attack++;
+		int ci = g->combo < (int)(sizeof(COMBO_BONUS) / sizeof(COMBO_BONUS[0])) ? g->combo
+		         : (int)(sizeof(COMBO_BONUS) / sizeof(COMBO_BONUS[0])) - 1;
+		attack += COMBO_BONUS[ci];
+
+		bool empty = true;
+		for (int i = 0; i < BOARD_H * BOARD_W; i++)
+			if ((&g->cells[0][0])[i] != CELL_EMPTY)
+				empty = false;
+		if (empty) {
+			g->lastAllClear = true;
+			attack += ALL_CLEAR_BONUS;
+			g->score += 3500u * (uint32_t)(g->level + 1);
+		}
+		g->lastAttack = attack;
+
 		/* Outgoing attack first cancels our own incoming garbage. */
-		int attack = ATTACK[cleared];
 		int cancel = attack < g->pendingGarbage ? attack : g->pendingGarbage;
 		g->pendingGarbage -= cancel;
 		g->garbageOut += attack - cancel;
 	} else {
+		g->combo = -1;
+		if (spin != SPIN_NONE)
+			g->score += (uint32_t)((spin == SPIN_FULL ? 400 : 100) * (g->level + 1));
 		/* Locking entirely in the hidden rows is a lock-out. */
 		if (aboveVisible)
 			g->over = true;
@@ -205,6 +289,7 @@ static bool try_move(Game *g, int dx, int dy)
 		return false;
 	g->x += dx;
 	g->y += dy;
+	g->lastRotated = false;
 	return true;
 }
 
@@ -225,6 +310,7 @@ static void try_rotate(Game *g, int dir)
 			g->rot = nr;
 			g->x = nx;
 			g->y = ny;
+			g->lastRotated = true;
 			reset_lock(g);
 			return;
 		}
@@ -250,7 +336,7 @@ void game_update(Game *g, const GameInput *in)
 	if (g->over)
 		return;
 
-	g->lastClear = 0;
+	g->frames++;
 
 	if (in->pressed & IN_HOLD && !g->holdUsed) {
 		int cur = g->type;

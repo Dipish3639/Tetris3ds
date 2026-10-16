@@ -3,3 +3,4 @@ build/
 *.smdh
 *.elf
 *.map
+preview/
