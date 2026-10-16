@@ -1,0 +1,19 @@
+name: Build
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container: devkitpro/devkitarm:latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build
+        run: make
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tetris3ds
+          path: tetris3ds.3dsx
