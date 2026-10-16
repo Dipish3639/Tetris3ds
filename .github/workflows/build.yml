@@ -33,6 +33,7 @@ jobs:
           cp /tmp/Project_CTR/makerom/bin/makerom /opt/ctrtools/
           git clone https://github.com/diasurgical/bannertool /tmp/bannertool
           git -C /tmp/bannertool checkout "$BANNERTOOL_REF"
+          git -C /tmp/bannertool submodule update --init --recursive
           make -C /tmp/bannertool -j"$(nproc)"
           cp /tmp/bannertool/output/linux-x86_64/bannertool /opt/ctrtools/
 
