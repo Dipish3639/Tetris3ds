@@ -223,11 +223,11 @@ static void send_state(void)
 	net_send(&s, sizeof(s));
 }
 
-static void poll_network(void)
+static void poll_network(int steps)
 {
 	NetState in;
 	size_t n;
-	framesSinceRecv++;
+	framesSinceRecv += steps;
 	while ((n = net_recv(&in, sizeof(in))) > 0) {
 		if (n != sizeof(in) || in.magic != NET_MAGIC)
 			continue;
@@ -288,6 +288,17 @@ static void play_frame(const GameInput *in)
 			audio_sfx(SFX_GAMEOVER);
 	}
 	update_effects();
+}
+
+/* Run as many 60 Hz game steps as real time calls for. Button presses only
+ * count for the first step so they aren't applied twice. */
+static void run_play(const GameInput *in, int steps)
+{
+	GameInput step = *in;
+	for (int i = 0; i < steps && !game.over; i++) {
+		play_frame(&step);
+		step.pressed = 0;
+	}
 }
 
 /* Pick the background track and its volume for the current screen. */
@@ -387,6 +398,7 @@ static void fill_ui(void)
 int main(void)
 {
 	gfxInitDefault();
+	osSetSpeedupEnable(true); /* 804 MHz on New 3DS */
 	gfxSetDoubleBuffering(GFX_TOP, true);
 	gfxSetDoubleBuffering(GFX_BOTTOM, true);
 	build_backgrounds();
@@ -411,7 +423,21 @@ int main(void)
 	mode = MODE_MENU;
 	int scanCooldown = 0;
 
+	/* Game logic runs on a fixed 60 Hz clock, independent of how long a
+	 * frame takes to draw, so speed and the timer always match real time. */
+	u64 lastTick = svcGetSystemTick();
+	u64 tickAcc = 0;
+	const u64 TICKS_PER_STEP = SYSCLOCK_ARM11 / 60;
+
 	while (aptMainLoop()) {
+		u64 now = svcGetSystemTick();
+		tickAcc += now - lastTick;
+		lastTick = now;
+		int steps = (int)(tickAcc / TICKS_PER_STEP);
+		tickAcc -= (u64)steps * TICKS_PER_STEP;
+		if (steps > 4) /* after a long stall (e.g. HOME menu), don't fast-forward */
+			steps = 4;
+
 		hidScanInput();
 		u32 down = hidKeysDown();
 		u32 held = hidKeysHeld();
@@ -478,7 +504,8 @@ int main(void)
 
 		case MODE_SOLO:
 			if (game.over) {
-				update_effects();
+				for (int i = 0; i < steps; i++)
+					update_effects();
 				if (down & KEY_A)
 					start_solo();
 				else if (down & KEY_START)
@@ -491,12 +518,12 @@ int main(void)
 			} else if (down & KEY_START) {
 				ui.paused = true;
 			} else {
-				play_frame(&in);
+				run_play(&in, steps);
 			}
 			break;
 
 		case MODE_VERSUS:
-			poll_network();
+			poll_network(steps);
 			if (ui.paused) {
 				/* The match keeps running; this is only a leave prompt. */
 				if (down & KEY_A) {
@@ -512,13 +539,14 @@ int main(void)
 			}
 
 			if (myStatus == ST_PLAYING) {
-				play_frame(&in);
+				run_play(&in, steps);
 				if (game.over) {
 					myStatus = ST_DEAD;
 					ui.losses++;
 				}
 			} else {
-				update_effects();
+				for (int i = 0; i < steps; i++)
+					update_effects();
 				if ((myStatus == ST_DEAD || myStatus == ST_WON) && !ui.paused && (down & KEY_A))
 					myStatus = ST_READY;
 			}
@@ -539,13 +567,22 @@ int main(void)
 		cv_init_rotated(&cv, fb, TOP_W, TOP_H);
 		render_top(&cv, &ui);
 
-		fb = gfxGetFramebuffer(GFX_BOTTOM, GFX_LEFT, NULL, NULL);
-		memcpy(fb, botBg, sizeof(botBg));
-		cv_init_rotated(&cv, fb, BOT_W, BOT_H);
-		render_bottom(&cv, &ui);
+		/* The bottom screen only shows stats, so redraw it every other frame
+		 * (or right away when the screen changes) to save time. */
+		static int lastBottomScreen = -1;
+		bool drawBottom = (ui.frame & 1) == 0 || ui.screen != lastBottomScreen;
+		if (drawBottom) {
+			lastBottomScreen = ui.screen;
+			fb = gfxGetFramebuffer(GFX_BOTTOM, GFX_LEFT, NULL, NULL);
+			memcpy(fb, botBg, sizeof(botBg));
+			cv_init_rotated(&cv, fb, BOT_W, BOT_H);
+			render_bottom(&cv, &ui);
+		}
 
 		gfxFlushBuffers();
-		gfxSwapBuffers();
+		gfxScreenSwapBuffers(GFX_TOP, false);
+		if (drawBottom)
+			gfxScreenSwapBuffers(GFX_BOTTOM, false);
 		gspWaitForVBlank();
 		ui.frame++;
 	}

@@ -20,7 +20,6 @@ static const uint32_t MINO[9] = {
 #define COL_TEXT      0xFFFFFF
 #define COL_LABEL     0xB8B8C8
 #define COL_DIM       0x8A8AA0
-#define COL_PANEL     0x07070C
 #define COL_BORDER    0xD8D8E0
 #define COL_DANGER    0xFF3040
 #define COL_GOLD      0xFFD54A
@@ -81,9 +80,11 @@ static void label(Canvas *cv, int x, int y, const char *s, int align)
 	cv_text(cv, &FONT_SMALL, x, y, s, COL_LABEL, 255, 1, align);
 }
 
-static void panel(Canvas *cv, int x, int y, int w, int h, int alpha)
+/* Panels are drawn opaque: a solid fill is much cheaper than blending
+ * thousands of pixels every frame, and over the dark backdrop it looks the same. */
+static void panel(Canvas *cv, int x, int y, int w, int h)
 {
-	cv_blend(cv, x, y, w, h, COL_PANEL, alpha);
+	cv_fill(cv, x, y, w, h, 0x09080F);
 }
 
 static int pulse(int frame, int period)
@@ -156,7 +157,7 @@ static bool in_danger(const Game *g)
 static void board_frame(Canvas *cv, int x, int y, int cell, uint32_t border, int borderAlpha, int grid)
 {
 	int w = BOARD_W * cell, h = VISIBLE_H * cell;
-	panel(cv, x, y, w, h, 225);
+	panel(cv, x, y, w, h);
 	if (grid)
 		for (int c = 1; c < BOARD_W; c++)
 			cv_blend(cv, x + c * cell, y, 1, h, 0xFFFFFF, grid);
@@ -252,7 +253,7 @@ static void draw_play_top(Canvas *cv, const UiState *ui)
 
 	/* HOLD panel. */
 	int hx = BX - 66, hw = 56;
-	panel(cv, hx, BY, hw, 46, 210);
+	panel(cv, hx, BY, hw, 46);
 	cv_blend(cv, hx, BY, hw, 1, COL_BORDER, 60);
 	label(cv, hx + 5, BY + 4, "HOLD", ALIGN_LEFT);
 	draw_piece_centered(cv, hx + hw / 2, BY + 29, 9, g->hold,
@@ -260,7 +261,7 @@ static void draw_play_top(Canvas *cv, const UiState *ui)
 
 	/* NEXT panel. */
 	int nx = BX + BW + 10, nw = 56;
-	panel(cv, nx, BY, nw, 142, 210);
+	panel(cv, nx, BY, nw, 142);
 	cv_blend(cv, nx, BY, nw, 1, COL_BORDER, 60);
 	label(cv, nx + nw - 5, BY + 4, "NEXT", ALIGN_RIGHT);
 	for (int i = 0; i < NEXT_COUNT; i++)
