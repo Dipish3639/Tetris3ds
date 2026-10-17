@@ -9,6 +9,9 @@ env:
   PROJECT_CTR_REF: d52c2b0e788c2d085763d7c5dcc4b2edd9ffb7d8
   BANNERTOOL_REF: 16d8c5a0ce02a5e06e64ab42275132fca57c04a2
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -46,3 +49,22 @@ jobs:
           path: |
             tetris3ds.3dsx
             tetris3ds.cia
+
+      # Every push to the default branch becomes a release, so
+      # https://github.com/<owner>/<repo>/releases/latest/download/tetris3ds.cia
+      # always serves the newest build (handy for FBI's QR code install).
+      - name: Publish release
+        if: github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ github.run_number }}
+          name: Tetris 3DS build ${{ github.run_number }}
+          target_commitish: ${{ github.sha }}
+          make_latest: true
+          body: |
+            Install on a 3DS with FBI: **Remote Install -> Scan QR Code** and scan the QR code
+            in the README, or download `tetris3ds.cia` below and install it from the SD card.
+            `tetris3ds.3dsx` is for the Homebrew Launcher.
+          files: |
+            tetris3ds.cia
+            tetris3ds.3dsx

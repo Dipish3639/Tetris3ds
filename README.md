@@ -26,6 +26,16 @@ wireless versus mode**. Clearing lines sends garbage rows to the other player.
   - Your rival's board is shown live on the bottom screen
   - Win counter and rematches without reconnecting
 
+## Install with a QR code (no computer needed)
+
+On a 3DS with custom firmware, open **FBI**, choose **Remote Install -> Scan QR
+Code** and point the camera at this code. It always installs the newest build.
+
+![Install QR code](docs/install-qr.png)
+
+The same file is at
+<https://github.com/Dipish3639/Tetris3ds/releases/latest/download/tetris3ds.cia>.
+
 ## Controls
 
 | Button            | Action               |
