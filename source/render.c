@@ -376,7 +376,20 @@ void render_top(Canvas *cv, const UiState *ui)
 	case SCR_MENU:
 		falling_minos(cv, ui->frame, 28);
 		draw_title(cv, TOP_W / 2, 80, ui->frame);
-		cv_text(cv, &FONT_SMALL, TOP_W / 2, 200, "USE THE TOUCH SCREEN OR D-PAD + A", COL_DIM, 255, 1, ALIGN_CENTER);
+		cv_text(cv, &FONT_SMALL, TOP_W / 2, 196, "USE THE TOUCH SCREEN OR D-PAD + A", COL_DIM, 255, 1, ALIGN_CENTER);
+		if (ui->audioOk) {
+			char buf[48];
+			snprintf(buf, sizeof(buf), "X: MUSIC %s     Y: SOUND %s",
+			         ui->musicOn ? "ON" : "OFF", ui->sfxOn ? "ON" : "OFF");
+			cv_text(cv, &FONT_SMALL, TOP_W / 2, 212, buf, COL_LABEL, 255, 1, ALIGN_CENTER);
+		} else {
+			cv_text(cv, &FONT_SMALL, TOP_W / 2, 212, "AUDIO OFF: /3DS/DSPFIRM.CDC NOT FOUND (RUN DSP1)",
+			        COL_DANGER, 255, 1, ALIGN_CENTER);
+		}
+		break;
+	case SCR_LOADING:
+		draw_title(cv, TOP_W / 2, 80, 0);
+		cv_text(cv, &FONT_SMALL, TOP_W / 2, 180, "TUNING UP...", COL_LABEL, 255, 2, ALIGN_CENTER);
 		break;
 	case SCR_HOST_WAIT:
 	case SCR_JOIN_SCAN:
@@ -579,6 +592,7 @@ static void draw_versus_bottom(Canvas *cv, const UiState *ui)
 void render_bottom(Canvas *cv, const UiState *ui)
 {
 	switch (ui->screen) {
+	case SCR_LOADING:   break;
 	case SCR_MENU:      draw_menu_bottom(cv, ui); break;
 	case SCR_HOST_WAIT:
 	case SCR_JOIN_SCAN: draw_wait_bottom(cv, ui); break;

@@ -129,6 +129,7 @@ static void push_garbage(Game *g)
 	if (n > BOARD_H)
 		n = BOARD_H;
 	g->pendingGarbage = 0;
+	g->garbageEvent++;
 
 	/* Anything shoved off the top means we topped out. */
 	for (int r = 0; r < n; r++)
@@ -290,6 +291,8 @@ static bool try_move(Game *g, int dx, int dy)
 	g->x += dx;
 	g->y += dy;
 	g->lastRotated = false;
+	if (dx)
+		g->moveEvent++;
 	return true;
 }
 
@@ -311,6 +314,7 @@ static void try_rotate(Game *g, int dir)
 			g->x = nx;
 			g->y = ny;
 			g->lastRotated = true;
+			g->rotateEvent++;
 			reset_lock(g);
 			return;
 		}
@@ -349,6 +353,7 @@ void game_update(Game *g, const GameInput *in)
 			spawn(g, t);
 		}
 		g->holdUsed = true;
+		g->holdEvent++;
 		if (g->over)
 			return;
 	}
@@ -382,6 +387,7 @@ void game_update(Game *g, const GameInput *in)
 		while (try_move(g, 0, 1))
 			dropped++;
 		g->score += (uint32_t)(dropped * 2);
+		g->hardDropEvent++;
 		lock_piece(g);
 		return;
 	}

@@ -69,6 +69,11 @@ typedef struct {
 	bool lastAllClear;
 	uint32_t clearedRows;  /* bitmask of board rows that were cleared */
 	int lockEvent;         /* counts every lock */
+	int moveEvent;         /* sideways moves */
+	int rotateEvent;       /* successful rotations */
+	int holdEvent;
+	int hardDropEvent;
+	int garbageEvent;      /* garbage rows pushed into the board */
 
 	uint32_t rng;
 } Game;

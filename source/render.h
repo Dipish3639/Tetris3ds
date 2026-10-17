@@ -11,7 +11,7 @@
 #define BOT_W 320
 #define BOT_H 240
 
-enum { SCR_MENU, SCR_HOST_WAIT, SCR_JOIN_SCAN, SCR_PLAY };
+enum { SCR_MENU, SCR_HOST_WAIT, SCR_JOIN_SCAN, SCR_PLAY, SCR_LOADING };
 enum { RES_NONE, RES_GAMEOVER, RES_WIN, RES_LOSE, RES_READY };
 enum { MENU_MARATHON, MENU_ZEN, MENU_HOST, MENU_JOIN, MENU_COUNT };
 
@@ -22,6 +22,7 @@ typedef struct {
 	/* Menu */
 	int menuSel;
 	const char *message;
+	bool audioOk, musicOn, sfxOn;
 
 	/* Play */
 	const Game *game;

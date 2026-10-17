@@ -51,6 +51,7 @@ int main(int argc, char **argv)
 
 	memset(&ui, 0, sizeof(ui));
 	ui.screen = SCR_MENU; ui.frame = 200; ui.menuSel = 0;
+	ui.audioOk = ui.musicOn = ui.sfxOn = true;
 	snprintf(p, sizeof(p), "%s/menu", dir); shot(p, &ui);
 
 	game_init(&g, 42);

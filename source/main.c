@@ -3,6 +3,7 @@
 #include <string.h>
 
 #include "game.h"
+#include "audio.h"
 #include "net.h"
 #include "render.h"
 
@@ -48,6 +49,12 @@ static int framesSinceRecv;
 /* Effects bookkeeping. */
 static int seenClearEvent, seenLockEvent;
 
+/* Sound bookkeeping: last seen value of each game event counter. */
+static struct {
+	int move, rotate, hold, hardDrop, lock, clear, garbage;
+} heard;
+static bool audioOk, musicOn = true, sfxOn = true;
+
 static u32 seed(void)
 {
 	return (u32)osGetTime() ^ (u32)svcGetSystemTick();
@@ -61,6 +68,62 @@ static void reset_effects(void)
 	ui.actionTimer = 0;
 	ui.actionAllClear = false;
 	ui.countdown = COUNTDOWN_FRAMES;
+	heard.move = game.moveEvent;
+	heard.rotate = game.rotateEvent;
+	heard.hold = game.holdEvent;
+	heard.hardDrop = game.hardDropEvent;
+	heard.lock = game.lockEvent;
+	heard.clear = game.clearEvent;
+	heard.garbage = game.garbageEvent;
+}
+
+/* Play sounds for whatever the game did this frame. */
+static void game_sounds(void)
+{
+	if (game.moveEvent != heard.move)
+		audio_sfx(SFX_MOVE);
+	if (game.rotateEvent != heard.rotate)
+		audio_sfx(SFX_ROTATE);
+	if (game.holdEvent != heard.hold)
+		audio_sfx(SFX_HOLD);
+
+	bool hard = game.hardDropEvent != heard.hardDrop;
+	bool locked = game.lockEvent != heard.lock;
+	if (hard)
+		audio_sfx(SFX_HARDDROP);
+	else if (locked && game.lastClear == 0)
+		audio_sfx(SFX_LOCK);
+
+	if (game.clearEvent != heard.clear) {
+		if (game.lastSpin != SPIN_NONE)
+			audio_sfx(SFX_SPIN);
+		if (game.lastClear > 0) {
+			int n = game.lastClear > 4 ? 4 : game.lastClear;
+			audio_sfx(SFX_CLEAR1 + n - 1);
+			if (game.combo >= 1) {
+				/* Each combo step is a semitone higher. */
+				int step = game.combo > 16 ? 16 : game.combo;
+				float pitch = 1.0f;
+				for (int i = 0; i < step; i++)
+					pitch *= 1.05946f;
+				audio_sfx_pitch(SFX_COMBO, pitch);
+			}
+			if (game.b2b > 0)
+				audio_sfx(SFX_B2B);
+			if (game.lastAllClear)
+				audio_sfx(SFX_ALLCLEAR);
+		}
+	}
+	if (game.garbageEvent != heard.garbage)
+		audio_sfx(SFX_GARBAGE);
+
+	heard.move = game.moveEvent;
+	heard.rotate = game.rotateEvent;
+	heard.hold = game.holdEvent;
+	heard.hardDrop = game.hardDropEvent;
+	heard.lock = game.lockEvent;
+	heard.clear = game.clearEvent;
+	heard.garbage = game.garbageEvent;
 }
 
 static void start_solo(void)
@@ -185,6 +248,7 @@ static void poll_network(void)
 		if (myStatus == ST_PLAYING && (opp.status == ST_DEAD || opp.status == ST_READY)) {
 			myStatus = ST_WON;
 			ui.wins++;
+			audio_sfx(SFX_WIN);
 		}
 	}
 
@@ -212,16 +276,41 @@ static void map_input(u32 down, u32 held, GameInput *in)
 /* Run one frame of play; countdown first, then the game itself. */
 static void play_frame(const GameInput *in)
 {
-	if (ui.countdown > 0)
-		ui.countdown--;
-	if (ui.countdown <= 30)
+	if (ui.countdown == COUNTDOWN_FRAMES)
+		audio_sfx(SFX_READY);
+	if (ui.countdown > 0 && --ui.countdown == 30)
+		audio_sfx(SFX_GO);
+	if (ui.countdown <= 30) {
+		bool wasOver = game.over;
 		game_update(&game, in);
+		game_sounds();
+		if (game.over && !wasOver)
+			audio_sfx(SFX_GAMEOVER);
+	}
 	update_effects();
+}
+
+/* Pick the background track and its volume for the current screen. */
+static void update_music(void)
+{
+	int track = TRACK_CALM;
+	float vol = 0.8f;
+	if (mode == MODE_SOLO || mode == MODE_VERSUS) {
+		track = (mode == MODE_SOLO && zenMode) ? TRACK_CALM : TRACK_BATTLE;
+		vol = 1.0f;
+		bool finished = (mode == MODE_SOLO && game.over) || (mode == MODE_VERSUS && myStatus != ST_PLAYING);
+		if (ui.paused || finished)
+			vol = 0.35f;
+	}
+	audio_music(track);
+	audio_music_volume(vol);
+	audio_update();
 }
 
 static void menu_select(int item, bool *netOk)
 {
 	message[0] = 0;
+	audio_sfx(SFX_MENU_SELECT);
 	switch (item) {
 	case MENU_MARATHON:
 	case MENU_ZEN:
@@ -264,6 +353,9 @@ static void build_backgrounds(void)
 static void fill_ui(void)
 {
 	ui.message = message;
+	ui.audioOk = audioOk;
+	ui.musicOn = musicOn;
+	ui.sfxOn = sfxOn;
 	ui.game = &game;
 	ui.zen = zenMode;
 	ui.versus = mode == MODE_VERSUS;
@@ -299,6 +391,22 @@ int main(void)
 	gfxSetDoubleBuffering(GFX_BOTTOM, true);
 	build_backgrounds();
 
+	/* Show a loading screen while the music is synthesised. */
+	for (int i = 0; i < 2; i++) {
+		Canvas cv;
+		ui.screen = SCR_LOADING;
+		u8 *fb = gfxGetFramebuffer(GFX_TOP, GFX_LEFT, NULL, NULL);
+		memcpy(fb, topBg, sizeof(topBg));
+		cv_init_rotated(&cv, fb, TOP_W, TOP_H);
+		render_top(&cv, &ui);
+		fb = gfxGetFramebuffer(GFX_BOTTOM, GFX_LEFT, NULL, NULL);
+		memcpy(fb, botBg, sizeof(botBg));
+		gfxFlushBuffers();
+		gfxSwapBuffers();
+		gspWaitForVBlank();
+	}
+	audioOk = audio_init();
+
 	bool netOk = net_init();
 	mode = MODE_MENU;
 	int scanCooldown = 0;
@@ -314,10 +422,22 @@ int main(void)
 		case MODE_MENU:
 			if (down & KEY_START)
 				goto quit;
-			if (down & (KEY_DUP | KEY_CPAD_UP))
+			if (down & (KEY_DUP | KEY_CPAD_UP)) {
 				ui.menuSel = (ui.menuSel + MENU_COUNT - 1) % MENU_COUNT;
-			if (down & (KEY_DDOWN | KEY_CPAD_DOWN))
+				audio_sfx(SFX_MENU_MOVE);
+			}
+			if (down & (KEY_DDOWN | KEY_CPAD_DOWN)) {
 				ui.menuSel = (ui.menuSel + 1) % MENU_COUNT;
+				audio_sfx(SFX_MENU_MOVE);
+			}
+			if (down & KEY_X)
+				musicOn = !musicOn;
+			if (down & KEY_Y) {
+				sfxOn = !sfxOn;
+				audio_enable(musicOn, sfxOn);
+				audio_sfx(SFX_MENU_MOVE);
+			}
+			audio_enable(musicOn, sfxOn);
 			if (down & KEY_TOUCH) {
 				touchPosition t;
 				hidTouchRead(&t);
@@ -334,14 +454,17 @@ int main(void)
 			break;
 
 		case MODE_HOST_WAIT:
-			if (down & (KEY_B | KEY_TOUCH))
+			if (down & (KEY_B | KEY_TOUCH)) {
+				audio_sfx(SFX_MENU_MOVE);
 				back_to_menu("");
+			}
 			else if (net_peer_connected())
 				start_versus();
 			break;
 
 		case MODE_JOIN_SCAN:
 			if (down & (KEY_B | KEY_TOUCH)) {
+				audio_sfx(SFX_MENU_MOVE);
 				back_to_menu("");
 			} else if (--scanCooldown <= 0) {
 				scanCooldown = 60;
@@ -408,6 +531,7 @@ int main(void)
 			break;
 		}
 
+		update_music();
 		fill_ui();
 		Canvas cv;
 		u8 *fb = gfxGetFramebuffer(GFX_TOP, GFX_LEFT, NULL, NULL);
@@ -427,6 +551,7 @@ int main(void)
 	}
 
 quit:
+	audio_exit();
 	net_exit();
 	gfxExit();
 	return 0;
